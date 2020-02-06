@@ -128,6 +128,6 @@ dmypy.json
 .ipynb_checkpoints
 
 #Authentication files
-client_secret.json
-token.pickle
+*.json
+*.pickle
 
