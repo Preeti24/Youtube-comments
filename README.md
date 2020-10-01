@@ -7,3 +7,4 @@
 3. [Hypothesis Testing](https://github.com/Preeti24/Youtube-comments/blob/master/Hypothesis%20Testing.ipynb)
 4. [Machine Learning](https://github.com/Preeti24/Youtube-comments/blob/master/Machine%20Learning.ipynb)
 5. [Helper file](https://github.com/Preeti24/Youtube-comments/blob/master/Helper.py)
+6. [Project Report](https://github.com/Preeti24/Youtube-comments/blob/master/Reports/Capstone%202-%20Final%20Report.pdf)
