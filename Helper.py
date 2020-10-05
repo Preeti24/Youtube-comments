@@ -59,21 +59,37 @@ class Thresholder:
         100 values of threshold. 
     """
     
-    def __init__(self,gs,X,y,beta,plotChart=False):    
+    def __init__(self,gs,X,y,plotOptimalThreshold=False,plotROCCurve=False):  
+        self.gs=gs
         self.X=X
         self.y=y
+        self.plotOptimalThreshold=plotOptimalThreshold
+        self.plotROCCurve=plotROCCurve
+        
+    def fit(self,beta=1):
         self.beta=beta
+        self.metric_df=self.findOptimalThreshold(self.gs,self.X,self.y,self.beta)
         
-        predict_proba=gs.predict_proba(X['CleanWordList'])[:,1]
+        if self.plotOptimalThreshold==True:
+            self.plotOptimalThreshold_(self.metric_df)
         
-        thresholdRange=np.arange(0,1,0.01)
+        if self.plotROCCurve==True:
+            self.plotROCCurve_(self.gs,self.X,self.y)
             
-        Precision=[]
-        F1Score=[]
-        FbetaScore=[]
-        Accuracy=[]
-        Recall=[]  
-        Threshold=[]
+        return self
+    
+    def findOptimalThreshold(self,gs,X,y,beta):
+        
+        predict_proba=self.gs.predict_proba(X['CleanWordList'])[:,1]
+        
+        thresholdRange=list(set(predict_proba))
+            
+        precision_list=[]
+        f1Score_list=[]
+        fbetaScore_list=[]
+        accuracy_list=[]
+        recall_list=[]  
+        threshold_list=[]
         for t in thresholdRange:
             predict_newThreshold=[]
             for prob in predict_proba:
@@ -81,7 +97,7 @@ class Thresholder:
                     predict_newThreshold.append(0)
                 else:   
                     predict_newThreshold.append(1)
-            cm=confusion_matrix((y.astype(int)),(predict_newThreshold))
+            cm=confusion_matrix(y.astype(int),predict_newThreshold)
             tp = cm[0][0] 
             fp = cm[0][1] 
             fn = cm[1][0] 
@@ -92,25 +108,26 @@ class Thresholder:
             FBeta=((1 + beta**2) * precision * recall) / (beta**2 * precision + recall)
             accuracy=(tp + tn) /(tp + tn + fp + fn)
             
-            Precision.append(precision)
-            Recall.append(recall)
-            F1Score.append(F1)
-            FbetaScore.append(FBeta)
-            Accuracy.append(accuracy)   
-            Threshold.append(t)
+            precision_list.append(precision)
+            recall_list.append(recall)
+            f1Score_list.append(F1)
+            fbetaScore_list.append(FBeta)
+            accuracy_list.append(accuracy)   
+            threshold_list.append(t)
             
-        metric_df=pd.DataFrame(data={'Threshold':Threshold,
-                         'Precision':Precision,
-                         'Recall':Recall,
-                         'F1':F1Score,
-                         'FBeta':FbetaScore,
-                         'Accuracy':Accuracy})
-        metric_df['Beta']=beta
+        metric_df=pd.DataFrame(data={'Threshold':threshold_list,
+                         'Precision':precision_list,
+                         'Recall':recall_list,
+                         'F1':f1Score_list,
+                         'FBeta':fbetaScore_list,
+                         'Accuracy':accuracy_list})
+        metric_df['Beta']=self.beta
                       
         metric_df.reset_index(drop=True,inplace=True)
         metric_df.fillna(0,inplace=True)
+        return metric_df
         
-        if plotChart==True:
+    def plotOptimalThreshold_(self,metric_df):
             xmark=metric_df[metric_df['FBeta']==max(metric_df['FBeta'])]['Threshold'].iloc[0]
             ymark=metric_df[metric_df['FBeta']==max(metric_df['FBeta'])]['FBeta'].iloc[0]
             beta=metric_df[metric_df['FBeta']==max(metric_df['FBeta'])]['Beta'].iloc[0]
@@ -124,26 +141,8 @@ class Thresholder:
             plt.ylabel('Metrics')
             title='Threshold vs Metrics'
             plt.title(title);
-        self.result_df=metric_df
-        
-        
-class plotRocCurve:
-    """This function plots the ROC curve for the given 
-        predictor and target variables using given estimator.
-        
-        
-        Parameters
-        ----------
-        gs: Estimator
-        X: Predictor Variable
-        y: Taeget Variable
-        
-        Returns
-        -------
-        None
-     """
-       
-    def __init__(self,gs,X,y):
+            
+    def plotROCCurve_(self,gs,X,y):
             fpr, tpr, thresholds=roc_curve(y,gs.predict_proba(X['CleanWordList'])[:,1])
             self.false_positive_rate=fpr
             self.true_positive_rate=tpr
@@ -157,6 +156,8 @@ class plotRocCurve:
             plt.plot([0, 1], [0, 1], 'k--')
             plt.show()
         
+        
+
 class GridSearcher:
     """
     This function performs grid search using given text 
@@ -177,7 +178,17 @@ class GridSearcher:
     -------
     None
     """
-    def __init__(self,X,y,n_splits,vectorizer,clf,param_grid):
+    def __init__(self,n_splits,vectorizer,clf,param_grid):
+        self.n_splits=n_splits
+        self.vectorizer=vectorizer
+        self.clf=clf
+        self.param_grid=param_grid
+   
+    def fit(self,X,y):
+        return self.findBestEstimator(X,y,self.n_splits,self.vectorizer,self.clf,self.param_grid)
+        
+        
+    def findBestEstimator(self,X,y,n_splits,vectorizer,clf,param_grid):            
         cv = KFold(n_splits=n_splits, random_state=42, shuffle=True)
         pipe = Pipeline([
                     ('vectorizer',vectorizer),
@@ -185,9 +196,14 @@ class GridSearcher:
                     ])
         gs = RandomizedSearchCV(pipe,param_grid,n_jobs=-1, cv=cv, verbose=0,return_train_score=True,scoring='roc_auc')
         gs.fit(X['CleanWordList'],y);
+        
+        self.pipe=pipe
+        self.cv=cv
         self.best_params=gs.best_params_
         self.best_score=gs.best_score_
         self.fittedWinnerModel=gs
+        
+        return self
 
 class TextPreprocessor:  
     """
