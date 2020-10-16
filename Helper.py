@@ -29,6 +29,8 @@ from sklearn.pipeline import Pipeline
 
 from sklearn.base import BaseEstimator,TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer,TfidfVectorizer
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.pipeline import FeatureUnion
 
 import emoji
 from nltk.corpus import wordnet
@@ -80,9 +82,10 @@ class Thresholder:
     
     def findOptimalThreshold(self,gs,X,y,beta):
         
-        predict_proba=self.gs.predict_proba(X['CleanWordList'])[:,1]
+        predict_proba=self.gs.predict_proba(X)[:,1]
         
         thresholdRange=list(set(predict_proba))
+#         thresholdRange=np.arange(0.1,1,0.1)
             
         precision_list=[]
         f1Score_list=[]
@@ -124,7 +127,7 @@ class Thresholder:
         metric_df['Beta']=self.beta
                       
         metric_df.reset_index(drop=True,inplace=True)
-        metric_df.fillna(0,inplace=True)
+#         metric_df.fillna(0,inplace=True)
         return metric_df
         
     def plotOptimalThreshold_(self,metric_df):
@@ -143,7 +146,7 @@ class Thresholder:
             plt.title(title);
             
     def plotROCCurve_(self,gs,X,y):
-            fpr, tpr, thresholds=roc_curve(y,gs.predict_proba(X['CleanWordList'])[:,1])
+            fpr, tpr, thresholds=roc_curve(y,gs.predict_proba(X)[:,1])
             self.false_positive_rate=fpr
             self.true_positive_rate=tpr
             self.thresholds=thresholds
@@ -190,12 +193,32 @@ class GridSearcher:
         
     def findBestEstimator(self,X,y,n_splits,vectorizer,clf,param_grid):            
         cv = KFold(n_splits=n_splits, random_state=42, shuffle=True)
+        
+        get_text_data = FunctionTransformer(lambda x: x['CleanWordList'], validate=False)
+        get_numeric_data = FunctionTransformer(lambda x: x[['%OfUpperCaseLetters', 
+                                                            'NoOfURL', 
+#                                                             'AvgLengthOfEachWord',
+#                                                             '%OfNoOfStopWords', 
+                                                            'NoOfWords', 
+#                                                             '%OfNoOfUniqueWords',
+                                                            'AvgSentenceLength',
+                                                            'TextStandard']], validate=False)
+#        Pipepline with FeatureUnion. Feature Union joins the text features and meta features generated during Feature engineering
         pipe = Pipeline([
-                    ('vectorizer',vectorizer),
-                    ('clf', clf)
-                    ])
+                        ('features', FeatureUnion([
+                            ('meta_features', Pipeline([
+                                                                               ('selector', get_numeric_data)
+                                                                               ])),
+                                                   ('text_features', Pipeline([
+                                                                               ('selector', get_text_data),
+                                                                               ('vectorizer', vectorizer)
+                                                                               ]))
+                                                  ])),
+                        ('clf', clf)
+        ])
+        
         gs = RandomizedSearchCV(pipe,param_grid,n_jobs=-1, cv=cv, verbose=0,return_train_score=True,scoring='roc_auc')
-        gs.fit(X['CleanWordList'],y);
+        gs.fit(X,y);
         
         self.pipe=pipe
         self.cv=cv
