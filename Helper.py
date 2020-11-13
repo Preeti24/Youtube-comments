@@ -1,9 +1,8 @@
 import warnings
 warnings.filterwarnings("ignore")
-
+import nltkModules
 import pandas as pd
 import numpy as np
-
 import seaborn as sns
 from matplotlib import pyplot as plt
 plt.rcParams['figure.figsize']=(15,5)
@@ -39,6 +38,7 @@ from nltk.corpus import stopwords
 import string
 import unicodedata
 from nltk.stem import WordNetLemmatizer
+import textstat
 
 
 class Thresholder:
@@ -63,12 +63,14 @@ class Thresholder:
     
     def __init__(self,gs,X,y,plotOptimalThreshold=False,plotROCCurve=False):  
         self.gs=gs
-        self.X=X
+       
         self.y=y
         self.plotOptimalThreshold=plotOptimalThreshold
         self.plotROCCurve=plotROCCurve
+        self.X=X
         
     def fit(self,beta=1):
+        
         self.beta=beta
         self.metric_df=self.findOptimalThreshold(self.gs,self.X,self.y,self.beta)
         
@@ -159,7 +161,42 @@ class Thresholder:
             plt.plot([0, 1], [0, 1], 'k--')
             plt.show()
         
+
+class TransformInput(BaseEstimator, TransformerMixin):
+    
+    def __init__(self):
+        pass
+
+    def fit(self, X, y=None):
+        """
+        Learn how to transform data based on input data, X.
+        """
+        return self
+
+    def transform(self, X):
+        """
+        Transform X into a new dataset, Xprime and return it.
+        """
+        X=pd.DataFrame(X)
+        def countCaps(comment):
+            count=0
+            for c in comment:
+                if c.isupper():
+                    count+=1
+            return round(count*100/len(comment),2)
+        X['%OfUpperCaseLetters']=X['Comment'].apply(countCaps)
         
+        pattern='https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,}'
+        X['NoOfURL']=X['Comment'].apply(lambda x: len(re.findall(pattern,x)))
+
+        X['NoOfWords']=X['Comment'].apply(lambda x: (len(word_tokenize(x))))
+        
+        X['AvgSentenceLength']=X['Comment'].apply(lambda x: textstat.avg_sentence_length(x))
+        
+        X['TextStandard']=X['Comment'].apply(lambda x: textstat.text_standard(x,float_output=True))
+        
+        self.X=X
+        return self.X
 
 class GridSearcher:
     """
@@ -189,24 +226,23 @@ class GridSearcher:
    
     def fit(self,X,y):
         return self.findBestEstimator(X,y,self.n_splits,self.vectorizer,self.clf,self.param_grid)
+
+    
+
+    def findBestEstimator(self,X,y,n_splits,vectorizer,clf,param_grid):   
         
-        
-    def findBestEstimator(self,X,y,n_splits,vectorizer,clf,param_grid):            
         cv = KFold(n_splits=n_splits, random_state=42, shuffle=True)
         
-        get_text_data = FunctionTransformer(lambda x: x['CleanWordList'], validate=False)
+        get_text_data = FunctionTransformer(lambda x: x['Comment'], validate=False)
         get_numeric_data = FunctionTransformer(lambda x: x[['%OfUpperCaseLetters', 
                                                             'NoOfURL', 
-#                                                             'AvgLengthOfEachWord',
-#                                                             '%OfNoOfStopWords', 
                                                             'NoOfWords', 
-#                                                             '%OfNoOfUniqueWords',
                                                             'AvgSentenceLength',
                                                             'TextStandard']], validate=False)
 #        Pipepline with FeatureUnion. Feature Union joins the text features and meta features generated during Feature engineering
-        pipe = Pipeline([
+        pipe = Pipeline([('transformInput',TransformInput()),
                         ('features', FeatureUnion([
-                            ('meta_features', Pipeline([
+                                                   ('meta_features', Pipeline([
                                                                                ('selector', get_numeric_data)
                                                                                ])),
                                                    ('text_features', Pipeline([
@@ -225,12 +261,21 @@ class GridSearcher:
         self.best_params=gs.best_params_
         self.best_score=gs.best_score_
         self.fittedWinnerModel=gs
+        self.X=X
         
         return self
 
-class TextPreprocessor:  
+def lemmatize(cleanTextList):       
+        wordnet_map = {"N":wordnet.NOUN, "V":wordnet.VERB, "J":wordnet.ADJ, "R":wordnet.ADV}
+        pos_tagged_text = nltk.pos_tag(cleanTextList)
+        lemmatizer=WordNetLemmatizer()
+
+        return " ".join([lemmatizer.lemmatize(word, wordnet_map.get(pos[0], wordnet.NOUN)) for word, pos in pos_tagged_text])
+
+
+def TextPreprocessor(comment): 
     """
-    This function takes list of text and performs a 
+     This function takes list of text and performs a 
         list of processing steps and return text ready 
         to be fed to machine learning model. 
         
@@ -252,35 +297,19 @@ class TextPreprocessor:
         -------
         List of words
     """
-    
-    def __init__(self,CleanWordList):
-        comment=CleanWordList
-        try:
-#             pattern1='https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,}' 
-            pattern1='(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?'
-
-            comment=re.sub(pattern1,'CleanWordList ',comment)
-            comment=re.sub('<[^<]+?>', '', comment)
-            comment=comment.replace(u'\ufeff', '')
-            comment=emoji.demojize(comment, delimiters=("", ""))
-            comment=comment.lower()
-            comment=re.sub(r'\d','9',comment)
-            comment = re.sub("([^\x00-\x7F])+"," ",comment)
-            wordList=word_tokenize(comment)
-            wordList=[word for word in wordList if word not in stopwords.words('english')]
-            wordList=[word for word in wordList if word not in string.punctuation]
-            cleanedTextList=[unicodedata.normalize('NFKD',word).encode('ascii', 'ignore').decode('utf-8', 'ignore') \
+    pattern1='(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?'
+    comment=re.sub(pattern1,' ',comment)
+    comment=re.sub('<[^<]+?>', '', comment)
+    comment=comment.replace(u'\ufeff', '')
+    comment=emoji.demojize(comment, delimiters=("", ""))
+    comment=comment.lower()
+    comment=re.sub(r'\d','9',comment)
+    comment = re.sub("([^\x00-\x7F])+"," ",comment)
+    wordList=word_tokenize(comment)
+    wordList=[word for word in wordList if word not in stopwords.words('english')]
+    wordList=[word for word in wordList if word not in string.punctuation]
+    cleanedTextList=[unicodedata.normalize('NFKD',word).encode('ascii', 'ignore').decode('utf-8', 'ignore') \
                              for word in wordList]
-            lemmatizedText=self.lemmatize(cleanedTextList)
-            return lemmatizedText
-        except:
-            print('An error occured while processing below text: \n\n',comment)
-
-    def lemmatize(self,cleanTextList):       
-        wordnet_map = {"N":wordnet.NOUN, "V":wordnet.VERB, "J":wordnet.ADJ, "R":wordnet.ADV}
-        pos_tagged_text = nltk.pos_tag(cleanTextList)
-        lemmatizer=WordNetLemmatizer()
-
-        return " ".join([lemmatizer.lemmatize(word, wordnet_map.get(pos[0], wordnet.NOUN)) for word, pos in pos_tagged_text])
-
-
+    lemmatizedText=lemmatize(cleanedTextList)
+    return lemmatizedText
+ 
