@@ -15,7 +15,7 @@ At the end, I analysed "top key phrases" from positive and negative comments usi
 ## [Reference](#table-of-contents)
 1. Reports
    - [Project proposal](https://github.com/Preeti24/Youtube-comments/blob/master/Reports/Capstone%202%20-Project%20Proposal.docx)
-   - [Slide Deck](https://github.com/Preeti24/Youtube-comments/blob/master/SlideDeck.pdf)
+   - [Slide Deck](https://github.com/Preeti24/Youtube-comments/blob/master/Reports/SlideDeck.pdf)
    - [Final report](https://github.com/Preeti24/Youtube-comments/blob/master/Reports/Capstone%202-%20Final%20Report.pdf)
 1. Project Files
    - [Data Source - UCI’s YouTube Spam Collection Data Set](http://archive.ics.uci.edu/ml/datasets/YouTube+Spam+Collection#)  
