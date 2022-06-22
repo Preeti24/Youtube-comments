@@ -12,7 +12,7 @@ xgboost==0.90
 spacy_streamlit==0.1.0
 google_api_python_client==1.12.5
 ipython==7.19.0
-numpy==1.19.4
+numpy==1.22.0
 protobuf==3.13.0
 scikit_learn==0.23.2
 vaderSentiment==3.3.2
